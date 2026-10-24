@@ -1,0 +1,87 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Water - Tropical Lagoon
+  m_Shader: {fileID: 4800000, guid: 210328ee53aaee04297f61d93059868f, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords:
+  - _KAPI_CAUSTICS
+  - _KAPI_FOAM
+  - _KAPI_LIGHT_GLINTS
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _CausticsTexture:
+        m_Texture: {fileID: 2800000, guid: 50bd3b731e9604f4a820c7baf3590e3b, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _FoamTexture:
+        m_Texture: {fileID: 2800000, guid: 533b516fe1675a941b565142f41bedbb, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _RippleNormal:
+        m_Texture: {fileID: 2800000, guid: 6be972b8005898742b7ba10ae8042416, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _CausticsDepth: 12
+    - _CausticsEnabled: 1
+    - _CausticsSize: 2.6
+    - _CausticsSpeed: 0.6
+    - _CausticsSplit: 0.008
+    - _CausticsStrength: 1.8
+    - _CrestFoam: 0.15
+    - _CrestFoamHeight: 0.7
+    - _EdgeSoftness: 0.12
+    - _FoamEnabled: 1
+    - _FoamSize: 1.6
+    - _LightGlint: 0.2
+    - _LightGlints: 1
+    - _LightInfluence: 0
+    - _ReflectionStrength: 1
+    - _Refraction: 0.05
+    - _RippleFadeDistance: 45
+    - _RippleSize: 4.5
+    - _RippleSpeed: 0.35
+    - _RippleStrength: 0.45
+    - _ScatterStrength: 0.8
+    - _ShoreFoam: 0.8
+    - _ShoreFoamWidth: 0.4
+    - _Smoothness: 0.96
+    - _SunGlint: 2.5
+    - _SunGlintSharpness: 1100
+    - _SurfaceFromBelow: 1.1
+    - _UnderwaterVisibility: 25
+    - _Visibility: 20
+    - _WaveSpeed: 1
+    - _WaveStrength: 0.85
+    - _WindowSoftness: 0.12
+    m_Colors:
+    - _CausticsColor: {r: 1, g: 1, b: 1, a: 1}
+    - _DeepColor: {r: 0, g: 0.3, b: 0.4, a: 1}
+    - _FoamColor: {r: 0.95, g: 0.97999996, b: 1, a: 1}
+    - _ScatterColor: {r: 0.15, g: 0.85, b: 0.7, a: 1}
+    - _ShallowColor: {r: 0.55, g: 0.98, b: 0.9, a: 1}
+    - _UnderwaterColor: {r: 0.03, g: 0.42, b: 0.5, a: 1}
+    - _WaveA: {r: 1, g: 0.35, b: 0.08, a: 7}
+    - _WaveB: {r: -0.45, g: 1, b: 0.07, a: 4.1}
+    - _WaveC: {r: 0.7, g: -0.8, b: 0.06, a: 2.3}
+    - _WaveD: {r: -0.9, g: -0.3, b: 0.05, a: 1.4}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1

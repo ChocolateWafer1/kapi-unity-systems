@@ -1,0 +1,1 @@
+Kapi VR setup is skipped in this repo project; it runs in projects that import the Kapi VR package.
