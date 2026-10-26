@@ -87,7 +87,7 @@ namespace KapiRope.EditorTools
             if (targets.Length == 1 && Application.isPlaying)
             {
                 var rope = (Rope)target;
-                string state = rope.IsAsleep ? "asleep" : "simulating";
+                string state = rope.IsReturning ? "going back to its starting shape" : rope.IsAsleep ? "asleep" : "simulating";
                 EditorGUILayout.HelpBox($"{state}, held by {rope.Grips.Count} hand(s)", MessageType.None);
             }
 

@@ -158,6 +158,8 @@ namespace KapiRope
 
             m_BuiltLength = m_Length;
             ComputeBounds();
+            m_RestValid = false;
+            m_Returning = false;
 
             for (int i = m_Grips.Count - 1; i >= 0; i--)
                 if (m_Grips[i].Distance > m_Length) Release(m_Grips[i]);
@@ -438,6 +440,7 @@ namespace KapiRope
             for (int g = 0; g < m_Grips.Count; g++)
             {
                 var grip = m_Grips[g];
+                if (!grip.Pinning) continue;
                 for (int i = 0; i < n; i++)
                     if (m_InverseMass[i] > 0f) Tether(i, grip.stepTarget, Mathf.Abs(i * rest - grip.Distance));
             }
@@ -455,6 +458,7 @@ namespace KapiRope
             for (int g = 0; g < m_Grips.Count; g++)
             {
                 var grip = m_Grips[g];
+                if (!grip.Pinning) continue;
                 float x = grip.Distance / m_SegmentRest;
                 int j = Mathf.Clamp((int)x, 0, m_Count - 2);
                 float t = Mathf.Clamp01(x - j);

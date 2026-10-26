@@ -122,9 +122,6 @@ namespace KapiRope
         [Tooltip("How much a last pull on the rope flings you when you let go. Pull down hard and release to launch upward.")]
         [SerializeField, Range(0f, 2f)] float m_ClimbFling = 0.8f;
 
-        [Tooltip("How much moving your arms sideways while hanging pumps the swing.")]
-        [SerializeField, Range(0f, 1f)] float m_SwingPump = 0.25f;
-
         [Tooltip("Air drag on a player swinging on the rope. 0 = swings forever.")]
         [SerializeField, Min(0f)] float m_SwingDrag = 0.05f;
 
@@ -165,6 +162,19 @@ namespace KapiRope
 
         [Tooltip("Simulate in the Scene view without Play mode: drag the rope around, change its length and watch it coil.")]
         [SerializeField] bool m_PreviewInEditor = true;
+
+        [Header("Reset When Stuck")]
+        [Tooltip("If the rope ends up snagged or tangled (sitting still, but not hanging the way it started) and nobody is holding it, it smoothly goes back to its starting shape.")]
+        [SerializeField] bool m_ReturnWhenStuck = true;
+
+        [Tooltip("Seconds the rope has to sit snagged before it goes back.")]
+        [SerializeField, Min(0f)] float m_StuckTime = 3f;
+
+        [Tooltip("How far (m) any part of the rope has to be from where it started to count as snagged.")]
+        [SerializeField, Min(0.05f)] float m_StuckDistance = 0.5f;
+
+        [Tooltip("How long the trip back to the starting shape takes (seconds). It passes through anything in the way.")]
+        [SerializeField, Min(0.05f)] float m_ReturnTime = 1f;
 
         readonly List<RopeGrip> m_Grips = new List<RopeGrip>();
         MeshRenderer m_Renderer;
@@ -237,7 +247,6 @@ namespace KapiRope
         public float MaxSlideSpeed => m_MaxSlideSpeed;
         public float ReleaseBoost => m_ReleaseBoost;
         public float ClimbFling => m_ClimbFling;
-        public float SwingPump => m_SwingPump;
         public float SwingDrag => m_SwingDrag;
         public float MaxReleaseSpeed => m_MaxReleaseSpeed;
         public RopeBraidStyle BraidStyle => m_BraidStyle;
@@ -330,6 +339,7 @@ namespace KapiRope
             if (m_SettleOnStart) Settle(m_SettleTime);
             m_AnchorPrevious = transform.position;
             if (m_EndAttachment != null) m_EndPrevious = m_EndAttachment.position;
+            CaptureRest();
             BuildMesh();
         }
 
@@ -447,10 +457,20 @@ namespace KapiRope
         {
             EnsureParticles();
             if (m_Count < 2 || deltaTime <= 0f) return;
+            deltaTime = Mathf.Min(deltaTime, k_MaxFrameTime);
 
-            if (m_Asleep && !ShouldWake()) return;
-            Simulate(Mathf.Min(deltaTime, k_MaxFrameTime), true);
-            m_MeshDirty = true;
+            if (m_Returning)
+            {
+                StepReturn(deltaTime);
+                return;
+            }
+
+            if (!m_Asleep || ShouldWake())
+            {
+                Simulate(deltaTime, true);
+                m_MeshDirty = true;
+            }
+            CheckStuck(deltaTime);
         }
 
         /// <summary>Per-rope color multiplied with the material color.</summary>

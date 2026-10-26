@@ -41,5 +41,11 @@ namespace KapiRope
 
         /// <summary>World position the held point is pulled to (the hand).</summary>
         public Vector3 Target { get; set; }
+
+        /// <summary>
+        /// When false the hand only rides along the rope (like a loose second hand while climbing): the rope still
+        /// counts as held, but isn't pulled to <see cref="Target"/>.
+        /// </summary>
+        public bool Pinning { get; set; } = true;
     }
 }

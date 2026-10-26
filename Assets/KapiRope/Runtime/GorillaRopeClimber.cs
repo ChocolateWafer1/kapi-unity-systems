@@ -37,6 +37,8 @@ namespace KapiRope
             public Vector3 point;
             public Vector3 offset;
             public Vector3 previousOffset;
+            public Vector3 held;
+            public int order;
             public RopeGrip ropeGrip;
             public float slideSpeed;
             public float hapticTimer;
@@ -66,6 +68,9 @@ namespace KapiRope
 
         [Tooltip("Holding grip before your hand reaches a rope grabs it on contact, so you can catch ropes mid-jump.")]
         [SerializeField] bool m_CatchWhileHolding = true;
+
+        [Tooltip("If your real hand ends up this far (m) from where it holds the rope, for example because the floor stops your body from following your arm, you let go.")]
+        [SerializeField, Min(0.1f)] float m_LetGoDistance = 0.5f;
 
         [Header("Bumping")]
         [Tooltip("Size of each hand when shoving ropes. Match your hand spheres (a 0.1 scale sphere is 0.05).")]
@@ -101,8 +106,11 @@ namespace KapiRope
         Vector3 m_LastPosition;
         Vector3 m_FrameMove;
         int m_PullIndex;
+        int m_GrabCounter;
+        Hand m_Lead;
         bool m_Counted;
         bool m_SavedGravity;
+        bool m_SavedDisableMovement;
         RigidbodyInterpolation m_SavedInterpolation;
 
         /// <summary>Called when a hand grabs a rope.</summary>
@@ -259,7 +267,8 @@ namespace KapiRope
                 LetGo(hand, true);
                 return;
             }
-            Slide(hand, dt);
+            // Only the hand you're hanging from slides down; the other one already rides along the rope.
+            if (hand == m_Lead) Slide(hand, dt);
         }
 
         void ReadGrip(Hand hand)
@@ -307,6 +316,8 @@ namespace KapiRope
 
             bool startHanging = !m_Hanging;
             hand.ropeGrip = best.Grab(bestDistance, hand.point, this);
+            hand.held = hand.point;
+            hand.order = ++m_GrabCounter;
             hand.previousOffset = hand.offset;
             hand.slideSpeed = 0f;
             hand.pusher.IgnoredRope = best;
@@ -324,6 +335,7 @@ namespace KapiRope
 
             hand.ropeGrip = null;
             hand.slideSpeed = 0f;
+            if (m_Lead == hand) m_Lead = null;
             if (hand.pusher != null) hand.pusher.IgnoredRope = null;
             if (hand.slideAudio != null) hand.slideAudio.Stop();
             if (grip.IsHeld && grip.Rope != null) grip.Rope.Release(grip);
@@ -339,6 +351,11 @@ namespace KapiRope
             m_Velocity = m_Body != null ? m_Body.linearVelocity : Vector3.zero;
             Array.Clear(m_PullHistory, 0, m_PullHistory.Length);
 
+            // Gorilla Locomotion would read the climbing moves as hand speed and fire jumps when the free hand
+            // brushes something. Its hand sticking still works, so you can still push off walls mid-swing.
+            m_SavedDisableMovement = m_Player.disableMovement;
+            m_Player.disableMovement = true;
+
             // While hanging, this script moves the player; the rigidbody just waits.
             if (m_Body == null) return;
             m_SavedGravity = m_Body.useGravity;
@@ -351,6 +368,8 @@ namespace KapiRope
         void EndHang(Rope rope, bool launch)
         {
             m_Hanging = false;
+            m_Lead = null;
+            if (m_Player != null) m_Player.disableMovement = m_SavedDisableMovement;
             Vector3 velocity = m_Velocity;
             if (launch && rope != null)
             {
@@ -368,44 +387,63 @@ namespace KapiRope
         }
 
         /// <summary>
-        /// Moves the body while hanging. Swinging comes from treating each held point as a tether: your hand can't be
-        /// farther from the anchor than the rope between them. A held hand stays locked to its spot on the rope, so
-        /// moving your arm moves your body instead (that's climbing); the rope only moves with your weight and swing.
+        /// Moves the body while hanging. You hang from one hand (the last one that grabbed): that hand is locked to
+        /// a point on the rope, and only your momentum and weight move that point, limited by the rope's length
+        /// (that's swinging). Moving your arm never moves the rope; it moves your body the other way instead
+        /// (that's climbing), like a hand stuck to a wall in Gorilla Tag. A second holding hand slides along the rope.
         /// </summary>
         void Hang(float dt)
         {
-            Transform root = m_Player.transform;
-            Vector3 start = root.position; // Includes anything Gorilla Locomotion did this frame, like a free-hand wall push.
-            Rope rope = (m_Left.ropeGrip ?? m_Right.ropeGrip).Rope;
-
-            // The rigidbody is zeroed every frame while hanging, so any velocity on it now is a Gorilla Locomotion
-            // jump from the free hand pushing off something. Keep it, so wall kicks work mid-swing.
-            if (m_Body != null)
+            var lead = LeadHand();
+            if (lead != m_Lead)
             {
-                Vector3 jump = m_Body.linearVelocity;
-                if (jump.sqrMagnitude > m_Velocity.sqrMagnitude) m_Velocity = Vector3.ClampMagnitude(jump, rope.MaxReleaseSpeed);
+                // Switching hands (or a new grab): hang from where the new hand already is, so nothing jumps.
+                if (m_Lead != null && m_Lead.ropeGrip != null) m_Lead.ropeGrip.Pinning = false;
+                lead.held = lead.point;
+                lead.previousOffset = lead.offset;
+                lead.ropeGrip.Pinning = true;
+                m_Lead = lead;
             }
+
+            Transform root = m_Player.transform;
+            Vector3 start = root.position;
+            // Anything Gorilla Locomotion did this frame, such as your free hand pushing off a wall, carries the
+            // rope with you and becomes momentum.
+            Vector3 external = start - m_LastPosition;
+            if (external.sqrMagnitude > k_TeleportDistance * k_TeleportDistance)
+            {
+                // Teleported (respawn and so on): let go instead of dragging the rope across the map.
+                LetGo(m_Left, false);
+                LetGo(m_Right, false);
+                return;
+            }
+            Rope rope = lead.ropeGrip.Rope;
 
             m_Velocity *= Mathf.Exp(-rope.SwingDrag * dt);
             m_Velocity += Physics.gravity * dt;
-            Vector3 swung = ProjectOntoRopes(start + m_Velocity * dt, true);
-            // Arms move the body the opposite way, like a hand stuck to a wall in Gorilla Tag. With both hands
-            // holding, the body moves by the average, the same way Gorilla Locomotion handles two hands.
-            Vector3 climbed = ProjectOntoRopes(swung - AverageArmMove(), false);
 
-            Vector3 pull = (climbed - swung) / dt;
-            Vector3 up = -Physics.gravity.normalized;
-            Vector3 velocity = (swung - m_LastPosition) / dt + Vector3.ProjectOnPlane(pull, up) * rope.SwingPump;
-
-            Vector3 target = climbed;
-            if (SweepBody(start, target, out var hit))
+            // Swing: the held point and your body move together, but never farther from the anchor than the rope.
+            Vector3 swing = TetherMove(lead, external + m_Velocity * dt);
+            Vector3 bodySwing = swing - external;
+            Vector3 velocity;
+            if (SweepBody(start, start + bodySwing, out var hit))
             {
-                Vector3 move = target - start;
-                float length = move.magnitude;
-                target = start + move / length * Mathf.Max(0f, hit.distance - k_Skin);
+                bodySwing = Clip(bodySwing, hit);
+                swing = external + bodySwing;
+                velocity = swing / dt;
                 float into = Vector3.Dot(velocity, hit.normal);
                 if (into < 0f) velocity -= hit.normal * into;
             }
+            else
+            {
+                velocity = swing / dt;
+            }
+
+            // Climb: the arm moves the body, and only the body.
+            Vector3 swung = start + bodySwing;
+            Vector3 climb = lead.previousOffset - lead.offset;
+            if (SweepBody(swung, swung + climb, out hit)) climb = Clip(climb, hit);
+            Vector3 target = swung + climb;
 
             root.position = target;
             if (m_Body != null)
@@ -414,69 +452,74 @@ namespace KapiRope
                 m_Body.linearVelocity = Vector3.zero;
             }
 
+            lead.held += swing;
+            lead.previousOffset = lead.offset;
+            lead.ropeGrip.Target = lead.held;
             m_FrameMove = target - start;
             m_Velocity = velocity;
             m_LastPosition = target;
-            m_PullHistory[m_PullIndex] = pull;
+            m_PullHistory[m_PullIndex] = climb / dt;
             m_PullIndex = (m_PullIndex + 1) % m_PullHistory.Length;
 
-            SetTarget(m_Left, target);
-            SetTarget(m_Right, target);
+            var other = lead == m_Left ? m_Right : m_Left;
+            if (other.ropeGrip != null) RideAlong(other, target);
+
+            // If something stops your body from following your arm (like the floor), your hand pulls off the rope.
+            if ((target + lead.offset - lead.held).sqrMagnitude > m_LetGoDistance * m_LetGoDistance) LetGo(lead, false);
         }
 
-        /// <summary>How far the holding hands moved relative to the body since last frame, averaged.</summary>
-        Vector3 AverageArmMove()
+        /// <summary>The holding hand that grabbed most recently.</summary>
+        Hand LeadHand()
         {
-            Vector3 sum = Vector3.zero;
-            int count = 0;
-            if (m_Left.ropeGrip != null)
-            {
-                sum += m_Left.offset - m_Left.previousOffset;
-                count++;
-            }
-            if (m_Right.ropeGrip != null)
-            {
-                sum += m_Right.offset - m_Right.previousOffset;
-                count++;
-            }
-            return count > 0 ? sum / count : Vector3.zero;
+            if (m_Left.ropeGrip == null) return m_Right;
+            if (m_Right.ropeGrip == null) return m_Left;
+            return m_Left.order > m_Right.order ? m_Left : m_Right;
         }
 
-        static void SetTarget(Hand hand, Vector3 body)
-        {
-            if (hand.ropeGrip == null) return;
-            hand.ropeGrip.Target = body + hand.offset;
-            hand.previousOffset = hand.offset;
-        }
-
-        Vector3 ProjectOntoRopes(Vector3 body, bool previousArms)
-        {
-            for (int iteration = 0; iteration < 4; iteration++)
-            {
-                bool moved = TetherHand(m_Left, ref body, previousArms) | TetherHand(m_Right, ref body, previousArms);
-                if (!moved) break;
-            }
-            return body;
-        }
-
-        static bool TetherHand(Hand hand, ref Vector3 body, bool previousArms)
+        /// <summary>A second holding hand slides along the rope with you instead of dragging it around.</summary>
+        void RideAlong(Hand hand, Vector3 body)
         {
             var grip = hand.ropeGrip;
-            if (grip == null) return false;
-            Vector3 offset = previousArms ? hand.previousOffset : hand.offset;
-            bool moved = Tether(ref body, offset, grip.Rope.AnchorPosition, grip.Distance);
-            if (grip.Rope.EndAttachment != null) moved |= Tether(ref body, offset, grip.Rope.EndAttachment.position, grip.Rope.Length - grip.Distance);
-            return moved;
+            grip.Pinning = false;
+            hand.previousOffset = hand.offset;
+            Vector3 point = body + hand.offset;
+            if (!grip.Rope.FindClosestPoint(point, out float along, out Vector3 closest, out float sq) || sq > m_LetGoDistance * m_LetGoDistance)
+            {
+                LetGo(hand, false);
+                return;
+            }
+            grip.Distance = along;
+            grip.Target = closest;
         }
 
-        static bool Tether(ref Vector3 body, Vector3 offset, Vector3 anchor, float length)
+        /// <summary>Limits a move of the held point so the rope between it and the anchor (or end) can't stretch.</summary>
+        static Vector3 TetherMove(Hand hand, Vector3 move)
         {
-            Vector3 hand = body + offset;
-            Vector3 d = hand - anchor;
+            var grip = hand.ropeGrip;
+            var rope = grip.Rope;
+            Vector3 point = hand.held + move;
+            for (int iteration = 0; iteration < 3; iteration++)
+            {
+                bool moved = Tether(ref point, rope.AnchorPosition, grip.Distance);
+                if (rope.EndAttachment != null) moved |= Tether(ref point, rope.EndAttachment.position, rope.Length - grip.Distance);
+                if (!moved) break;
+            }
+            return point - hand.held;
+        }
+
+        static bool Tether(ref Vector3 point, Vector3 anchor, float length)
+        {
+            Vector3 d = point - anchor;
             float sq = d.sqrMagnitude;
             if (sq <= length * length) return false;
-            body += anchor + d * (length / Mathf.Sqrt(sq)) - hand;
+            point = anchor + d * (length / Mathf.Sqrt(sq));
             return true;
+        }
+
+        static Vector3 Clip(Vector3 move, RaycastHit hit)
+        {
+            float length = move.magnitude;
+            return length < 1e-6f ? Vector3.zero : move / length * Mathf.Max(0f, hit.distance - k_Skin);
         }
 
         void Slide(Hand hand, float dt)
@@ -486,7 +529,7 @@ namespace KapiRope
             float looseness = rope.AllowSliding ? Mathf.InverseLerp(m_HoldThreshold, m_ReleaseThreshold, hand.grip) : 0f;
 
             // You only slide while the rope is carrying you, and toward whichever way is downhill along it.
-            bool loaded = m_Hanging && IsTaut(hand.point, grip);
+            bool loaded = m_Hanging && IsTaut(hand.held, grip);
             float downhill = Vector3.Dot(rope.GetDirection(grip.Distance), Physics.gravity.normalized);
             float target = loaded ? rope.MaxSlideSpeed * looseness * downhill : 0f;
             float rate = Mathf.Abs(target) < Mathf.Abs(hand.slideSpeed) ? 30f : Physics.gravity.magnitude;
