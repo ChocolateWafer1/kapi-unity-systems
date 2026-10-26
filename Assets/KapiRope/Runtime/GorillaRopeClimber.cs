@@ -38,6 +38,8 @@ namespace KapiRope
             public Vector3 offset;
             public Vector3 previousOffset;
             public Vector3 held;
+            public Vector3 gripOffset;
+            public float slack;
             public int order;
             public RopeGrip ropeGrip;
             public float slideSpeed;
@@ -243,7 +245,7 @@ namespace KapiRope
         {
             if (follower == null) return;
             // The held hand sits on the rope; the free hand rides along with the swing instead of lagging a frame.
-            if (hand.ropeGrip != null) follower.position = hand.ropeGrip.Rope.GetPoint(hand.ropeGrip.Distance);
+            if (hand.ropeGrip != null) follower.position = hand.ropeGrip.Rope.GetPoint(hand.ropeGrip.Distance) + hand.gripOffset;
             else follower.position += m_FrameMove;
         }
 
@@ -301,26 +303,30 @@ namespace KapiRope
             Rope best = null;
             float bestDistance = 0f;
             float bestSq = float.MaxValue;
+            Vector3 bestPoint = default;
             var ropes = Rope.Active;
             for (int i = 0; i < ropes.Count; i++)
             {
                 var rope = ropes[i];
-                if (!rope.Grabbable || !rope.FindClosestPoint(hand.point, out float along, out _, out float sq)) continue;
+                if (!rope.Grabbable || !rope.FindClosestPoint(hand.point, out float along, out Vector3 closest, out float sq)) continue;
                 float reach = rope.GrabRadius + rope.Radius;
                 if (sq > reach * reach || sq >= bestSq) continue;
                 best = rope;
                 bestDistance = along;
+                bestPoint = closest;
                 bestSq = sq;
             }
             if (best == null) return;
 
+            // Hold the rope where the hand touches it: the rope stays put and the hand keeps its offset from the
+            // rope's center, so thick ropes don't snap into the hand.
             bool startHanging = !m_Hanging;
-            hand.ropeGrip = best.Grab(bestDistance, hand.point, this);
-            hand.held = hand.point;
+            hand.ropeGrip = best.Grab(bestDistance, bestPoint, this);
+            hand.held = bestPoint;
+            hand.gripOffset = hand.point - bestPoint;
             hand.order = ++m_GrabCounter;
             hand.previousOffset = hand.offset;
             hand.slideSpeed = 0f;
-            hand.pusher.IgnoredRope = best;
             if (startHanging) BeginHang();
 
             Pulse(hand.side, m_GrabHaptics, 0.06f);
@@ -336,7 +342,6 @@ namespace KapiRope
             hand.ropeGrip = null;
             hand.slideSpeed = 0f;
             if (m_Lead == hand) m_Lead = null;
-            if (hand.pusher != null) hand.pusher.IgnoredRope = null;
             if (hand.slideAudio != null) hand.slideAudio.Stop();
             if (grip.IsHeld && grip.Rope != null) grip.Rope.Release(grip);
 
@@ -399,8 +404,14 @@ namespace KapiRope
             {
                 // Switching hands (or a new grab): hang from where the new hand already is, so nothing jumps.
                 if (m_Lead != null && m_Lead.ropeGrip != null) m_Lead.ropeGrip.Pinning = false;
-                lead.held = lead.point;
+                var leadRope = lead.ropeGrip.Rope;
+                lead.held = leadRope.GetPoint(lead.ropeGrip.Distance);
+                lead.gripOffset = lead.point - lead.held;
                 lead.previousOffset = lead.offset;
+                // The rope stretches a little under its own weight, so the held point can sit slightly farther from
+                // the anchor than its length along the rope. Give your body that much extra reach; otherwise pulling
+                // it back in would kick you upward.
+                lead.slack = Mathf.Max(0f, Vector3.Distance(lead.held, leadRope.AnchorPosition) - lead.ropeGrip.Distance);
                 lead.ropeGrip.Pinning = true;
                 m_Lead = lead;
             }
@@ -465,7 +476,7 @@ namespace KapiRope
             if (other.ropeGrip != null) RideAlong(other, target);
 
             // If something stops your body from following your arm (like the floor), your hand pulls off the rope.
-            if ((target + lead.offset - lead.held).sqrMagnitude > m_LetGoDistance * m_LetGoDistance) LetGo(lead, false);
+            if ((target + lead.offset - lead.held - lead.gripOffset).sqrMagnitude > m_LetGoDistance * m_LetGoDistance) LetGo(lead, false);
         }
 
         /// <summary>The holding hand that grabbed most recently.</summary>
@@ -483,13 +494,14 @@ namespace KapiRope
             grip.Pinning = false;
             hand.previousOffset = hand.offset;
             Vector3 point = body + hand.offset;
-            if (!grip.Rope.FindClosestPoint(point, out float along, out Vector3 closest, out float sq) || sq > m_LetGoDistance * m_LetGoDistance)
+            if (!grip.Rope.FindClosestPoint(point, out float along, out Vector3 closest, out float sq) || Mathf.Sqrt(sq) - grip.Rope.Radius > m_LetGoDistance)
             {
                 LetGo(hand, false);
                 return;
             }
             grip.Distance = along;
             grip.Target = closest;
+            hand.gripOffset = point - closest;
         }
 
         /// <summary>Limits a move of the held point so the rope between it and the anchor (or end) can't stretch.</summary>
@@ -500,8 +512,8 @@ namespace KapiRope
             Vector3 point = hand.held + move;
             for (int iteration = 0; iteration < 3; iteration++)
             {
-                bool moved = Tether(ref point, rope.AnchorPosition, grip.Distance);
-                if (rope.EndAttachment != null) moved |= Tether(ref point, rope.EndAttachment.position, rope.Length - grip.Distance);
+                bool moved = Tether(ref point, rope.AnchorPosition, grip.Distance + hand.slack);
+                if (rope.EndAttachment != null) moved |= Tether(ref point, rope.EndAttachment.position, rope.Length - grip.Distance + hand.slack);
                 if (!moved) break;
             }
             return point - hand.held;
@@ -626,6 +638,14 @@ namespace KapiRope
         void UpdatePushers(bool teleport)
         {
             if (m_Player == null) return;
+
+            // You pass through the rope you're holding, so climbing it never shoves it around.
+            Rope holding = (m_Left.ropeGrip ?? m_Right.ropeGrip)?.Rope;
+            if (m_Left.pusher != null) m_Left.pusher.IgnoredRope = holding;
+            if (m_Right.pusher != null) m_Right.pusher.IgnoredRope = holding;
+            m_HeadPusher.IgnoredRope = holding;
+            m_BodyPusher.IgnoredRope = holding;
+
             MoveHandPusher(m_Left, m_Player.leftHandFollower, teleport);
             MoveHandPusher(m_Right, m_Player.rightHandFollower, teleport);
 
@@ -655,6 +675,17 @@ namespace KapiRope
         void MoveHandPusher(Hand hand, Transform follower, bool teleport)
         {
             if (hand.pusher == null) return;
+            // A hand squeezing grip is reaching to hold, so it doesn't shove the rope out of its own way.
+            if (hand.grip >= m_ReleaseThreshold)
+            {
+                hand.pusher.Unregister();
+                return;
+            }
+            if (!hand.pusher.IsRegistered)
+            {
+                hand.pusher.Register();
+                teleport = true;
+            }
             Vector3 point = follower != null ? follower.position + m_FrameMove : hand.point;
             MovePusher(hand.pusher, point, point, m_HandRadius, teleport);
         }

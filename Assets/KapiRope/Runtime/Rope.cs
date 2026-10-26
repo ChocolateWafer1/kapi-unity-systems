@@ -116,8 +116,8 @@ namespace KapiRope
         [Tooltip("Fastest you slide with a barely-held grip (m/s).")]
         [SerializeField, Min(0f)] float m_MaxSlideSpeed = 5f;
 
-        [Tooltip("Multiplies your speed when you let go, like Gorilla Tag's jump multiplier.")]
-        [SerializeField, Range(0f, 3f)] float m_ReleaseBoost = 1.15f;
+        [Tooltip("You keep all your swing speed when you let go, multiplied by this, like Gorilla Tag's jump multiplier. 1 = exactly the swing speed.")]
+        [SerializeField, Range(0f, 3f)] float m_ReleaseBoost = 1.3f;
 
         [Tooltip("How much a last pull on the rope flings you when you let go. Pull down hard and release to launch upward.")]
         [SerializeField, Range(0f, 2f)] float m_ClimbFling = 0.8f;

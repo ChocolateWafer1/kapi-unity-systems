@@ -73,6 +73,7 @@ namespace KapiRope
         Quaternion m_MeshRotation;
         Bounds m_Bounds;
         float m_MaxSpeed;
+        float m_AverageSpeed;
         float m_StillTime;
         bool m_Asleep;
         bool m_MeshDirty;
@@ -888,15 +889,18 @@ namespace KapiRope
             Vector3 min = m_Positions[0];
             Vector3 max = min;
             float maxSpeedSq = 0f;
+            float speedSum = 0f;
             for (int i = 1; i < m_Count; i++)
             {
                 min = Vector3.Min(min, m_Positions[i]);
                 max = Vector3.Max(max, m_Positions[i]);
                 float sq = m_Velocities[i].sqrMagnitude;
                 if (sq > maxSpeedSq) maxSpeedSq = sq;
+                speedSum += Mathf.Sqrt(sq);
             }
             m_Bounds.SetMinMax(min, max);
             m_MaxSpeed = Mathf.Sqrt(maxSpeedSq);
+            m_AverageSpeed = speedSum / Mathf.Max(1, m_Count - 1);
         }
 
         void UpdateBoundsAndSleep(float deltaTime)

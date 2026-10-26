@@ -7,7 +7,8 @@ namespace KapiRope
     // glides back to the starting shape, passing through whatever caught it.
     public sealed partial class Rope
     {
-        const float k_StuckMaxSpeed = 0.5f;
+        // Average speed, not the fastest point, so a rope that's wedged somewhere and twitching still counts as stuck.
+        const float k_StuckMaxSpeed = 1f;
 
         Vector3[] m_RestOffsets = new Vector3[0];
         Vector3[] m_ReturnFrom = new Vector3[0];
@@ -68,7 +69,7 @@ namespace KapiRope
 
         void CheckStuck(float deltaTime)
         {
-            if (!m_ReturnWhenStuck || !Application.isPlaying || m_Grips.Count > 0 || m_PusherTouched || m_MaxSpeed > k_StuckMaxSpeed)
+            if (!m_ReturnWhenStuck || !Application.isPlaying || m_Grips.Count > 0 || m_PusherTouched || m_AverageSpeed > k_StuckMaxSpeed)
             {
                 m_StuckTimer = 0f;
                 return;
