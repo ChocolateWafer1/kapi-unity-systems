@@ -624,6 +624,18 @@ namespace KapiWater
             m_Bubbles.Emit(position, velocity + drift, size, UnityEngine.Random.Range(1.5f, 3.5f), m_BubbleColor);
         }
 
+        /// <summary>
+        /// Plays a splash another player made (sound and droplets, no vibration and no <see cref="Splashed"/> event),
+        /// for multiplayer.
+        /// </summary>
+        public void PlayOtherPlayerSplash(Vector3 at, float strength)
+        {
+            strength = Mathf.Clamp01(strength);
+            PlayAt(WaterSynth.Pick(m_SplashSounds, WaterSynth.Splashes), at, m_SplashVolume * Mathf.Lerp(0.25f, 1f, strength), -0.15f * strength, false);
+            if (m_Splashes && m_Droplets != null)
+                EmitSplash(at, Vector3.zero, Mathf.RoundToInt(Mathf.Lerp(4f, 40f, strength) * m_SplashAmount), strength, Mathf.Lerp(0.06f, 0.22f, strength));
+        }
+
         void EmitSplash(Vector3 at, Vector3 incoming, int count, float strength, float radius)
         {
             Vector3 carry = new Vector3(incoming.x, 0f, incoming.z) * 0.2f;

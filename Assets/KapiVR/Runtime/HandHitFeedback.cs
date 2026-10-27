@@ -318,21 +318,32 @@ namespace KapiVR
 
         void PlayHit(Vector3 point, float strength)
         {
-            var clip = PreparedClip();
-            if (clip != null)
-            {
-                var voice = NextVoice();
-                voice.transform.position = point;
-                voice.clip = clip;
-                voice.volume = Mathf.Lerp(m_MinVolume, m_MaxVolume, strength);
-                voice.pitch = 1f + UnityEngine.Random.Range(-m_PitchVariation, m_PitchVariation);
-                voice.spatialBlend = m_SpatialBlend;
-                voice.outputAudioMixerGroup = m_Output;
-                voice.Play();
-            }
-
+            PlaySound(point, strength, m_SpatialBlend);
             if (m_Vibrate) VRHaptics.Pulse(m_Hand, Mathf.Lerp(m_MinVibration, m_MaxVibration, strength), m_VibrationLength);
             Hit?.Invoke(point, strength);
+        }
+
+        /// <summary>
+        /// Plays the hit sound for another player's hand in multiplayer: sound only, always in 3D, no vibration and no
+        /// <see cref="Hit"/> event.
+        /// </summary>
+        public void PlayOtherPlayerHit(Vector3 point, float strength)
+        {
+            PlaySound(point, Mathf.Clamp01(strength), 1f);
+        }
+
+        void PlaySound(Vector3 point, float strength, float spatialBlend)
+        {
+            var clip = PreparedClip();
+            if (clip == null) return;
+            var voice = NextVoice();
+            voice.transform.position = point;
+            voice.clip = clip;
+            voice.volume = Mathf.Lerp(m_MinVolume, m_MaxVolume, strength);
+            voice.pitch = 1f + UnityEngine.Random.Range(-m_PitchVariation, m_PitchVariation);
+            voice.spatialBlend = spatialBlend;
+            voice.outputAudioMixerGroup = m_Output;
+            voice.Play();
         }
 
         /// <summary>The hit sound with its leading silence cut and its level brought up. Rebuilt when the settings change.</summary>

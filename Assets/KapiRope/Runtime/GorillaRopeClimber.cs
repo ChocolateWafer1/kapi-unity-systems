@@ -137,6 +137,9 @@ namespace KapiRope
 
         public float GrabThreshold => m_GrabThreshold;
 
+        /// <summary>Where the hand sits relative to the rope's center line while holding (thick ropes are held at their surface).</summary>
+        public Vector3 GetGripOffset(VRHand hand) => (hand == VRHand.Left ? m_Left : m_Right).gripOffset;
+
         void Reset()
         {
             m_Player = GetComponent<Player>();
